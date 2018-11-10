@@ -43,6 +43,11 @@
 
 #include "example.h"
 
+// I fail with
+// file:///home/dacoda/quicklisp/local-projects/goo-processing/dictionary-entries/9980.html
+// because of  <span class="lang">(ドイツ)</span>Ion】
+
+
 enum PRINT_URL_RETURN
 {
     PRINT_URL_SUCCESS = 0,
@@ -160,12 +165,31 @@ void title_helper(myhtml_tree_node_t* node)
         }
         else if ( tag_id == MyHTML_TAG_SPAN )
         {
-            break;
+            myhtml_tree_attr_t* attribute = myhtml_node_attribute_first(node);
+
+            while (attribute)
+            {
+                const char *attribute_key= myhtml_attribute_key(attribute, NULL);
+                // printf("Looking at attribute %s\n", attribute_key);
+                if ( !strcmp(attribute_key, "class") )
+                {
+                    const char *attribute_value = myhtml_attribute_value(attribute, NULL);
+                    // printf("Looking at attribute value %s\n", attribute_value);
+                    if ( !strcmp(attribute_value, "meaning") )
+                        goto __loop_end_do_not_print;
+                }
+
+                attribute = myhtml_attribute_next(attribute);
+            }
         }
 
         title_helper(myhtml_node_child(node));
         node = myhtml_node_next(node);
     }
+
+__loop_end_do_not_print:
+    ;
+
 } 
 
 void print_title(myhtml_tree_node_t* title_node)
