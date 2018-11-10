@@ -24,6 +24,11 @@
 #include <stdbool.h>
 #include <memory.h>
 
+
+#include <iostream>
+#include <cstring>
+#include <string>
+
 /* #include <myhtml/api.h> */
 #include <myhtml/myhtml.h>
 
@@ -132,10 +137,10 @@ int main(int argc, const char * argv[])
         std::size_t found = buffer.find(search_string);
         if (found!=std::string::npos)
         {
-            printf("Found at position %d\n", found);
+            // printf("Found at position %d\n", found);
 
             std::string remainder(buffer, found + search_string.length());
-            printf("The rest of the string starts with %.15s\n", remainder.c_str());
+            // printf("The rest of the string starts with %.15s\n", remainder.c_str());
 
             strcpy(&buffer[0], remainder.c_str());
             offset = buffer_length - (found + search_string.length());
@@ -174,7 +179,7 @@ int main(int argc, const char * argv[])
                 if ( !collection || collection->length <= 0 )
                 {
                     printf("Failure...\n");
-                    return 1;
+                    continue;
                 }
 
                 suffix_offset = 6;
@@ -199,7 +204,7 @@ int main(int argc, const char * argv[])
             buffer[new_length - suffix_offset] = '\0';
             printf("%s\n", buffer);
 
-            printf("\n");
+            // printf("\n");
     
             myhtml_collection_destroy(collection);
 
