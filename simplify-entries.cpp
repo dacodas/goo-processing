@@ -1,5 +1,7 @@
 /*
  Copyright (C) 2015-2016 Alexander Borisov
+
+ Also Dacoda :D
  
  This library is free software; you can redistribute it and/or
  modify it under the terms of the GNU Lesser General Public
@@ -18,6 +20,7 @@
  Author: lex.borisov@gmail.com (Alexander Borisov)
 */
 
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -32,10 +35,113 @@
 #include <cstring>
 #include <string>
 
+#define PCRE2_CODE_UNIT_WIDTH 8
+#include <pcre2.h>
+
 // #include <myhtml/myhtml.h>
 #include <myhtml/api.h>
 
 #include "example.h"
+
+enum PRINT_URL_RETURN
+{
+    PRINT_URL_SUCCESS = 0,
+    PRINT_URL_REGEX_COMPILATION_FAILED,
+    PRINT_URL_REGEX_MATCH_FAILED
+};
+
+int print_url(myhtml_tree_t* tree)
+{
+    const char key[] = "property";
+    const char value[] = "og:url";
+
+    const int url_length = 5000;
+    char url[url_length];
+
+    myhtml_collection_t* collection = myhtml_get_nodes_by_attribute_value(tree, NULL, NULL, true, key, strlen(key), value, strlen(value), NULL);
+
+    if ( collection && collection->list && collection->length )
+    {
+        myhtml_tree_attr_t* attribute = myhtml_node_attribute_last(collection->list[0]);
+        snprintf(url, url_length, "%s", myhtml_attribute_value(attribute, NULL));
+        // printf("%s", url);
+    }
+
+    // Taken from 'man pcre2demo', error handling optimistically
+    // removed <3 <3
+    int errornumber;
+    int rc;
+    PCRE2_SIZE *ovector;
+    PCRE2_SIZE erroroffset;
+
+    pcre2_code *re;
+
+    PCRE2_SPTR pattern = (PCRE2_SPTR) ".*/jn/([0-9]+)/meaning/m0u/.*";
+    PCRE2_SPTR subject = (PCRE2_SPTR) url;
+    size_t subject_length = strlen((char *) subject);
+
+    re = pcre2_compile(
+        pattern,               /* the pattern */
+        PCRE2_ZERO_TERMINATED, /* indicates pattern is zero‐terminated */
+        0,                     /* default options */
+        &errornumber,          /* for error number */
+        &erroroffset,          /* for error offset */
+        NULL);                 /* use default compile context */
+
+    if (re == NULL)
+    {
+        PCRE2_UCHAR buffer[256];
+        pcre2_get_error_message(errornumber, buffer, sizeof(buffer));
+        printf("PCRE2 compilation failed at offset %d: %s\n", (int)erroroffset,
+               buffer);
+        return PRINT_URL_REGEX_COMPILATION_FAILED;
+    }
+
+    pcre2_match_data* match_data = pcre2_match_data_create_from_pattern(re, NULL);
+    rc = pcre2_match(
+        re,                   /* the compiled pattern */
+        subject,              /* the subject string */
+        subject_length,       /* the length of the subject */
+        0,                    /* start at offset 0 in the subject */
+        0,                    /* default options */
+        match_data,           /* block for storing the result */
+        NULL);                /* use default match context */
+
+    if (re == NULL)
+    {
+        PCRE2_UCHAR buffer[256];
+        pcre2_get_error_message(errornumber, buffer, sizeof(buffer));
+        printf("PCRE2 compilation failed at offset %d: %s\n", (int)erroroffset,
+               buffer);
+        return PRINT_URL_REGEX_COMPILATION_FAILED;
+    }
+
+    ovector = pcre2_get_ovector_pointer(match_data);
+    // printf("Match succeeded at offset %d\n", (int)ovector[0]);
+
+    // for (int i = 0; i < rc; i++)
+    // {
+    //     PCRE2_SPTR substring_start = subject + ovector[2*i];
+    //     size_t substring_length = ovector[2*i+1] - ovector[2*i];
+    //     printf("%2d: %.*s\n", i, (int)substring_length, (char *)substring_start);
+    // }
+
+    if ( rc >= 2 )
+    {
+        int entry_number_match_index = 1;
+        int idx = entry_number_match_index;
+        PCRE2_SPTR substring_start = subject + ovector[2*idx];
+        size_t substring_length = ovector[2*idx+1] - ovector[2*idx];
+        printf("%.*s: ", (int) substring_length, (char*) substring_start);
+    }
+    else
+    {
+        printf("Could not match URL!\n");
+        return PRINT_URL_REGEX_MATCH_FAILED;
+    }
+
+    return PRINT_URL_SUCCESS;
+}
 
 mystatus_t serialization_callback(const char* data, size_t len, void* ctx)
 {
@@ -73,10 +179,8 @@ int main(int argc, const char * argv[])
 {
     int buffer_length = 50000;
     int offset = 0;
-    int failures = 0;
-    int document_number = 2;
-
-    printf("Let's go!\n");
+    int failure_number = 0;
+    int print_url_failure_number = 0;
 
     std::string buffer(buffer_length, '\0');
     myhtml_t* myhtml = myhtml_create();
@@ -87,13 +191,11 @@ int main(int argc, const char * argv[])
     myhtml_tree_init(tree, myhtml);
     myhtml_encoding_set(tree, MyENCODING_UTF_8);
 
-
     while ( true )
     {
         std::cin.read(&buffer[offset], buffer_length - offset);
         auto chars_read = std::cin.gcount();
 
-        // printf("I'm guessing this is %d\n", document_number);
         // printf("Attempted to read %d chars\n", buffer_length - offset);
         // printf("I read %d chars\n", chars_read);
 
@@ -101,7 +203,6 @@ int main(int argc, const char * argv[])
         {
             break;
         }
-
 
         offset = 0;
 
@@ -111,9 +212,8 @@ int main(int argc, const char * argv[])
         std::size_t found = buffer.find(search_string);
         if (found != std::string::npos)
         {
-            // printf("Found </html> at position %d\n", found);
-
             std::string remainder(buffer, found + search_string.length());
+            // printf("Found </html> at position %d\n", found);
             // printf("The rest of the string starts with %.15s\n", remainder.c_str());
 
             myhtml_parse_chunk(tree, buffer.c_str(), found + search_string.length());
@@ -134,8 +234,17 @@ int main(int argc, const char * argv[])
                 collection = myhtml_get_nodes_by_attribute_value(tree, NULL, NULL, true, key, strlen(key), value, strlen(value), NULL);
                 if ( collection && collection->length > 0 )
                 {
-                    // printf("Success for %d!\n", document_number);
-                    printf("%d: ", document_number);
+                    int print_url_result = print_url(tree);
+
+                    if ( print_url_result == PRINT_URL_REGEX_MATCH_FAILED )
+                    {
+                        std::ostringstream print_url_failure_filename;
+                        print_url_failure_filename << "/tmp/print-url-failure-buffer." << print_url_failure_number++;
+                        std::ofstream output_file(print_url_failure_filename.str());
+                        output_file << buffer << std::flush;
+                        continue;
+                    }
+
                     print_title(collection->list[0]);
                     // myhtml_serialization_tree_callback(collection->list[0], serialization_callback, NULL);
                     // print_tree(tree, collection->list[0]);
@@ -151,18 +260,19 @@ int main(int argc, const char * argv[])
                 {
                     myhtml_tree_node_t* text_node = myhtml_node_child(collection->list[0]);
                     const char* text = myhtml_node_text(text_node, NULL);
-                    // printf("Got a title of %s\n", text);
                     if ( !std::string(text).compare(u8"の意味 - goo国語辞書") )
                     {
-                        printf("No entry for %d\n", document_number);
-                        document_number++;
+                        printf("The title of this document suggests there is no entry for this number\n");
                         continue;
                     }
                 }
 
-                printf("Failure with %d\n", document_number);
-                std::cout << buffer << std::flush;
-                return 1;
+                printf("Failure #%d!\n", failure_number);
+                std::ostringstream failure_filename;
+                failure_filename << "/tmp/failure-buffer." << failure_number++;
+                std::ofstream output_file(failure_filename.str());
+                output_file << buffer << std::flush;
+                continue;
             }
     
             strcpy(&buffer[0], remainder.c_str());
@@ -178,63 +288,6 @@ int main(int argc, const char * argv[])
             myhtml_init(myhtml, MyHTML_OPTIONS_DEFAULT, 1, 0);
             myhtml_tree_init(tree, myhtml);
             myhtml_encoding_set(tree, MyENCODING_UTF_8);
-
-            document_number++;
-    
-            // int reading_buffer_length = 1024 * 1024;
-            // int suffix_offset = 0;
-            // int new_length;
-            // char reading_buffer[reading_buffer_length];
-            // if (collection && collection->length > 0)
-            // {
-            //     suffix_offset = 9;
-            // }
-            // else 
-            // {
-            //     const char new_attr_value[] = "basic_title nolink";
-            //     collection = myhtml_get_nodes_by_attribute_value(tree, NULL, NULL,
-            //                                                      is_insensitive,
-            //                                                      key, strlen(key),
-            //                                                      new_attr_value, strlen(new_attr_value), NULL);
-
-            //     if ( !collection || collection->length <= 0 )
-            //     {
-            //         printf("Failure...\n");
-
-            //         std::ostringstream file_name;
-            //         file_name << "/tmp/failure." << failures++;
-
-            //         auto output = std::ofstream(file_name.str());
-            //         output << buffer << std::endl;
-            //         output.close();
-                    
-            //         continue;
-            //     }
-
-            //     suffix_offset = 6;
-            // }
-
-            // new_length = print_tree(tree, collection->list[0]->child->next, false, reading_buffer, reading_buffer_length, 0);
-
-            // for (int i = 0; i < new_length; ++i)
-            // {
-            //     if (reading_buffer[i] == ' ' || reading_buffer[i] == '\n' || reading_buffer[i] == '\r')
-            //     {
-            //         for (int j = i; j < new_length; ++j)
-            //         {
-            //             reading_buffer[j] = reading_buffer[j+1];
-            //         }
-            //         reading_buffer[new_length-1] = '\0';
-            //         --new_length;
-            //         --i;
-            //     }
-            // }
-
-            // reading_buffer[new_length - suffix_offset] = '\0';
-            // printf("%s\n", reading_buffer);
-
-            // // printf("\n");
-    
         }
         else
         {
@@ -246,6 +299,3 @@ int main(int argc, const char * argv[])
 
     return 0;
 }
-
-
-
