@@ -4,19 +4,14 @@
 
 int main(int argc, char* argv[])
 {
-
     int buffer_length = 50000;
-    int offset = 0;
-
+    int buffer_insert_offset = 0;
     std::string buffer(buffer_length, '\0');
 
     while ( !std::cin.eof() )
     {
-        std::cin.read(&buffer[offset], buffer_length - offset);
-
-        offset = 0;
-
-        // printf("Buffer is now %s\n", buffer.c_str());
+        std::cin.read(&buffer[buffer_insert_offset], buffer_length - buffer_insert_offset);
+        buffer_insert_offset = 0;
 
         std::string search_string("</html>");
 
