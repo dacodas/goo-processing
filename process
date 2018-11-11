@@ -1,0 +1,75 @@
+#!/bin/bash 
+
+if [[ -z "${GOO_PROCESSING_PROJECT_ROOT}" ]]
+then
+    GOO_PROCESSING_PROJECT_ROOT=/home/dacoda/projects/goo-processing/   
+fi
+
+DICTIONARY_ENTRIES=${GOO_PROCESSING_PROJECT_ROOT}/dictionary-entries
+BINARIES_DIR=${GOO_PROCESSING_PROJECT_ROOT}/bin/
+RESULTS_DIR=${GOO_PROCESSING_PROJECT_ROOT}/results/
+
+ORIGINAL_PATH=$(pwd)
+
+function run_single
+{
+    cd $DICTIONARY_ENTRIES
+    find . -type f -printf "%f\n" | sort -n | xargs cat | ${BINARIES_DIR}/simplify-entries > ${RESULTS_DIR}/single-result
+}
+
+function run_in_parallel
+{
+    cd $DICTIONARY_ENTRIES
+    find . -type f -printf "%f\n" | sort -n | parallel --pipe -j 8 -N 10000 xargs cat "|" ${BINARIES_DIR}/simplify-entries ">" ${RESULTS_DIR}/{#}
+}
+
+function watch_cumulative_results
+{
+    cd $RESULTS_DIR/separate
+    watch 'find . -maxdepth 1 -printf "%f\n" | sort -n | grep "[0-9]\+" | xargs wc -l'
+}
+
+function clear_all_results
+{
+    rm -r ${RESULTS_DIR}
+}
+
+function clear_results
+{
+    cd $RESULTS_DIR
+    rm entry-numbers
+    rm entry-numbers-missing
+    rm readings
+}
+
+function renice
+{
+    ps -fC parallel | awk '{print $2}' | tail -n+2 | sudo xargs renice -20 -p 
+    ps -fC main | awk '{print $2}' | tail -n+2 | sudo xargs renice -20 -p 
+}
+
+function show_results
+{
+    cd $RESULTS_DIR/separate
+    find . -maxdepth 1 -printf "%f\n" | sort -n | grep "[0-9]\+" | xargs cat | less
+}
+
+function find_missing_entries
+{
+    cd $RESULTS_DIR/separate
+    find . -maxdepth 1 -printf "%f\n" | sort -n | grep "[0-9]\+" | xargs cat > $RESULTS_DIR/readings
+    <$RESULTS_DIR/readings awk -F':' '{print $1}' | egrep -v "(Failure|URL|title|[[:space:]])" > $RESULTS_DIR/entry-numbers
+    <$RESULTS_DIR/entry-numbers awk 'NR != $1 {
+ for (i = prev + 1; i < $1; i++) {
+    print i
+  }
+} 
+{ 
+  prev = $1
+}' > $RESULTS_DIR/entry-numbers-missing
+}
+
+trap "cd ${ORIGINAL_PATH}" SIGINT SIGTERM
+
+$1
+cd $ORIGINAL_PATH
