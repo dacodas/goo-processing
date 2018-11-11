@@ -1,0 +1,8 @@
+#compdef goo-process
+
+local -a subcommands
+
+# Split the output of list_functions on lines into array
+IFS=$'\n' subcommands=($(/home/dacoda/projects/goo-processing/goo-process list_functions))
+
+_describe 'command' subcommands

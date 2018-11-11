@@ -69,6 +69,11 @@ function find_missing_entries
 }' > $RESULTS_DIR/entry-numbers-missing
 }
 
+function list_functions
+{
+    <$0 grep function | awk '{print $2}'
+}
+
 trap "cd ${ORIGINAL_PATH}" SIGINT SIGTERM
 
 $1
