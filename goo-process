@@ -24,30 +24,19 @@ function run_single
 function run_in_parallel
 {
     cd $DICTIONARY_ENTRIES
-    find . -type f -printf "%f\n" | sort -n | parallel --pipe -j 8 -N 10000 xargs cat "|" ${BINARIES_DIR}/simplify-entries ">" ${RESULTS_DIR}/{#}
-}
-
-function watch_cumulative_results
-{
-    cd $RESULTS_DIR/separate
-    watch 'find . -maxdepth 1 -printf "%f\n" | sort -n | grep "[0-9]\+" | xargs wc -l'
-}
-
-function clear_all_results
-{
-    rm -r ${RESULTS_DIR}
-}
-
-function clear_results
-{
-    cd $RESULTS_DIR
-    find . -maxdepth 1 -type f | xargs rm
+    find . -type f -printf "%f\n" | sort -n | parallel --pipe -j 8 -N 10000 xargs cat "|" ${BINARIES_DIR}/simplify-entries ">" ${RESULTS_DIR}/separate/{#}
 }
 
 function renice
 {
     ps -fC parallel | awk '{print $2}' | tail -n+2 | sudo xargs renice -20 -p 
     ps -fC main | awk '{print $2}' | tail -n+2 | sudo xargs renice -20 -p 
+}
+
+function watch_cumulative_results
+{
+    cd $RESULTS_DIR/separate
+    watch 'find . -maxdepth 1 -printf "%f\n" | sort -n | grep "[0-9]\+" | xargs wc -l'
 }
 
 function show_results
@@ -59,25 +48,56 @@ function show_results
 function process_results
 {
     cd $RESULTS_DIR/separate
-    find . -maxdepth 1 -printf "%f\n" | sort -n | grep "[0-9]\+" | xargs cat > $RESULTS_DIR/results
-    <$RESULTS_DIR/results egrep -v "(Failure|URL|title|^[[:space:]])" | grep ':' > $RESULTS_DIR/valid-readings
-    <$RESULTS_DIR/valid-readings awk -F':' '{print $1}' > $RESULTS_DIR/entry-numbers
+    find . -maxdepth 1 -printf "%f\n" | sort -n | grep "[0-9]\+" | xargs cat | grep -v '^ ' > $RESULTS_DIR/results
+    <$RESULTS_DIR/results egrep -v "(Failure|No entry associated|^0)" | grep ':' > $RESULTS_DIR/perfect-readings
+    <$RESULTS_DIR/perfect-readings awk -F':' '{print $1}' > $RESULTS_DIR/entry-numbers
+
+    <$RESULTS_DIR/results grep "No entry associated" > $RESULTS_DIR/no-entry-associated
+
+    <$RESULTS_DIR/results grep "^0" > $RESULTS_DIR/expected-missing-entries
+
     sbcl --noinform --no-userinit --load $SRC_DIR/find-missing-entries.lisp --eval '(sb-ext:quit)' 
+}
+
+function find_missing_entries
+{
+    <$RESULTS_DIR/entry-numbers-missing sed 's@.*@dictionary-entries/&.html@' | xargs $BINARIES_DIR/simplify-entries | grep -v "^ " > $RESULTS_DIR/results.2  
+}
+
+function get_total_successful
+{
+    <$RESULTS_DIR/results.2 egrep -v "(Fail|No entry associated|^0)"> $RESULTS_DIR/perfect-readings.2
+    <$RESULTS_DIR/results.2 grep "^[0-9]" | awk -F":" '{print $1}' > $RESULTS_DIR/entry-numbers.2
+    printf "%s + %s\n" $(wc -l $RESULTS_DIR/perfect-readings.2 | awk '{print $1}') $(wc -l $RESULTS_DIR/perfect-readings | awk '{print $1}') | bc 
+    cat $RESULTS_DIR/perfect-readings $RESULTS_DIR/perfect-readings.2 | sort -n | uniq > $RESULTS_DIR/perfect-readings.total
+
+    cat $RESULTS_DIR/entry-numbers $RESULTS_DIR/entry-numbers.2 | sort -n | uniq > $RESULTS_DIR/entry-numbers.total
 }
 
 function split_readings
 {
     # Readings that end with a 【】
-    <$RESULTS_DIR/valid-readings grep '【.*】$' > $RESULTS_DIR/readings-with-alternatives
+    <$RESULTS_DIR/perfect-readings.total grep '【.*】$' > $RESULTS_DIR/readings-with-alternatives
 
     # Readings that have 【】pair in the middle
-    <$RESULTS_DIR/valid-readings sed 's/【.*】$//' | grep '【' > $RESULTS_DIR/readings-strange
+    <$RESULTS_DIR/perfect-readings.total sed 's/【.*】$//' | grep '【' > $RESULTS_DIR/readings-strange
 
     # Readings that end with a 〕, not belonging to the above group
-    <$RESULTS_DIR/valid-readings grep '[^】]〔.*〕$'  > $RESULTS_DIR/readings-with-older-readings
+    <$RESULTS_DIR/perfect-readings.total grep '[^】]〔.*〕$'  > $RESULTS_DIR/readings-with-older-readings
 
     # Other readings
-    <$RESULTS_DIR/valid-readings egrep -v '(【|〔)' > $RESULTS_DIR/readings-normal
+    <$RESULTS_DIR/perfect-readings.total egrep -v '(【|〔)' > $RESULTS_DIR/readings-normal
+}
+
+function clear_all_results
+{
+    rm -r ${RESULTS_DIR}
+}
+
+function clear_results
+{
+    cd $RESULTS_DIR
+    find . -maxdepth 1 -type f | xargs rm
 }
 
 function list_functions

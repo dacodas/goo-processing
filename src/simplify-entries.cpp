@@ -17,32 +17,41 @@
 
 #include <myhtml/api.h>
 
-enum PRINT_URL_RETURN
+enum GENERAL_RETURN
 {
-    PRINT_URL_SUCCESS = 0,
-    PRINT_URL_REGEX_COMPILATION_FAILED,
-    PRINT_URL_REGEX_MATCH_FAILED
+    GENERAL_RETURN_SUCCESS = 0,
+    GENERAL_RETURN_FAILURE
 };
 
-int print_url(myhtml_tree_t* tree)
+enum PRINT_ENTRY_RETURN
 {
-    const char key[] = "property";
-    const char value[] = "og:url";
+    PRINT_ENTRY_SUCCESS = 0,
+    PRINT_ENTRY_FAILURE
+};
 
-    const int url_length = 5000;
-    char url[url_length];
+enum SIMPLE_STRING_MATCH_RETURN_CODE
+{
+    SIMPLE_STRING_MATCH_SUCCESS = 0,
+    SIMPLE_STRING_MATCH_REGEX_COMPILATION_FAILED,
+    SIMPLE_STRING_MATCH_REGEX_MATCH_FAILED
+};
 
-    myhtml_collection_t* collection = myhtml_get_nodes_by_attribute_value(tree, NULL, NULL, true, key, strlen(key), value, strlen(value), NULL);
+struct _simple_string_match_struct
+{
+    SIMPLE_STRING_MATCH_RETURN_CODE return_code;
+    const unsigned char* matched_string;
+    int matched_string_length;
+};
 
-    if ( collection && collection->list && collection->length )
-    {
-        myhtml_tree_attr_t* attribute = myhtml_node_attribute_last(collection->list[0]);
-        snprintf(url, url_length, "%s", myhtml_attribute_value(attribute, NULL));
-        // printf("%s", url);
-    }
+typedef struct _simple_string_match_struct simple_string_match_struct;
 
-    // Taken from 'man pcre2demo', error handling optimistically
-    // removed <3 <3
+simple_string_match_struct simple_string_match(const char* string, const char* regex)
+{
+    simple_string_match_struct return_struct = {SIMPLE_STRING_MATCH_SUCCESS, NULL, 0};
+
+    // printf("Trying to match %s and %s\n", string, regex);
+
+    // Taken from 'man pcre2demo'
     int errornumber;
     int rc;
     PCRE2_SIZE *ovector;
@@ -50,8 +59,8 @@ int print_url(myhtml_tree_t* tree)
 
     pcre2_code *re;
 
-    PCRE2_SPTR pattern = (PCRE2_SPTR) ".*/jn/([0-9]+)/meaning/m0u/.*";
-    PCRE2_SPTR subject = (PCRE2_SPTR) url;
+    PCRE2_SPTR pattern = (PCRE2_SPTR) regex;
+    PCRE2_SPTR subject = (PCRE2_SPTR) string;
     size_t subject_length = strlen((char *) subject);
 
     re = pcre2_compile(
@@ -68,7 +77,8 @@ int print_url(myhtml_tree_t* tree)
         pcre2_get_error_message(errornumber, buffer, sizeof(buffer));
         printf("PCRE2 compilation failed at offset %d: %s\n", (int)erroroffset,
                buffer);
-        return PRINT_URL_REGEX_COMPILATION_FAILED;
+        return_struct.return_code = SIMPLE_STRING_MATCH_REGEX_COMPILATION_FAILED;
+        return return_struct;
     }
 
     pcre2_match_data* match_data = pcre2_match_data_create_from_pattern(re, NULL);
@@ -87,18 +97,12 @@ int print_url(myhtml_tree_t* tree)
         pcre2_get_error_message(errornumber, buffer, sizeof(buffer));
         printf("PCRE2 compilation failed at offset %d: %s\n", (int)erroroffset,
                buffer);
-        return PRINT_URL_REGEX_COMPILATION_FAILED;
+
+        return_struct.return_code = SIMPLE_STRING_MATCH_REGEX_COMPILATION_FAILED;
+        return return_struct;
     }
 
     ovector = pcre2_get_ovector_pointer(match_data);
-    // printf("Match succeeded at offset %d\n", (int)ovector[0]);
-
-    // for (int i = 0; i < rc; i++)
-    // {
-    //     PCRE2_SPTR substring_start = subject + ovector[2*i];
-    //     size_t substring_length = ovector[2*i+1] - ovector[2*i];
-    //     printf("%2d: %.*s\n", i, (int)substring_length, (char *)substring_start);
-    // }
 
     if ( rc >= 2 )
     {
@@ -106,31 +110,62 @@ int print_url(myhtml_tree_t* tree)
         int idx = entry_number_match_index;
         PCRE2_SPTR substring_start = subject + ovector[2*idx];
         size_t substring_length = ovector[2*idx+1] - ovector[2*idx];
-        printf("%.*s: ", (int) substring_length, (char*) substring_start);
+        return_struct.matched_string = substring_start;
+        return_struct.matched_string_length = substring_length;
     }
     else
     {
-        printf("Could not match %s!\n", url);
-        return PRINT_URL_REGEX_MATCH_FAILED;
+        // printf("Could not match %s!\n", string);
+        return_struct.return_code = SIMPLE_STRING_MATCH_REGEX_MATCH_FAILED;
     }
 
-    return PRINT_URL_SUCCESS;
+    return return_struct;
+}
+int get_entry_number(myhtml_tree_t* tree)
+{
+    const char key[] = "property";
+    const char value[] = "og:url";
+
+    const int url_length = 5000;
+    char url[url_length];
+
+    myhtml_collection_t* collection = myhtml_get_nodes_by_attribute_value(tree, NULL, NULL, true, key, strlen(key), value, strlen(value), NULL);
+
+    if ( collection && collection->list && collection->length )
+    {
+        myhtml_tree_attr_t* attribute = myhtml_node_attribute_last(collection->list[0]);
+        snprintf(url, url_length, "%s", myhtml_attribute_value(attribute, NULL));
+    }
+
+    const char* pattern = ".*/jn/([0-9]+)/meaning/m0u/.*";
+
+    simple_string_match_struct match_result = simple_string_match(url, pattern);
+
+    switch ( match_result.return_code )
+    {
+        case ( SIMPLE_STRING_MATCH_SUCCESS ):
+        {
+            return strtol(reinterpret_cast<const char*>(match_result.matched_string), NULL, 10);
+            break;
+        }
+        default:
+        {
+            return 0;
+            break;
+        }
+    }
 }
 
-mystatus_t serialization_callback(const char* data, size_t len, void* ctx)
+std::string title_helper(myhtml_tree_node_t* node)
 {
-    printf("%.*s", (int)len, data);
-    return MyCORE_STATUS_OK;
-}
+    std::ostringstream output_string;
 
-void title_helper(myhtml_tree_node_t* node)
-{
     while (node)
     {
         myhtml_tag_id_t tag_id = myhtml_node_tag_id(node);
         if ( tag_id == MyHTML_TAG__TEXT )
         {
-            printf("%s", myhtml_node_text(node, NULL));
+            output_string << myhtml_node_text(node, NULL);
         }
         else if ( tag_id == MyHTML_TAG_SPAN )
         {
@@ -139,46 +174,39 @@ void title_helper(myhtml_tree_node_t* node)
             while (attribute)
             {
                 const char *attribute_key= myhtml_attribute_key(attribute, NULL);
-                // printf("Looking at attribute %s\n", attribute_key);
                 if ( !strcmp(attribute_key, "class") )
                 {
                     const char *attribute_value = myhtml_attribute_value(attribute, NULL);
-                    // printf("Looking at attribute value %s\n", attribute_value);
                     if ( !strcmp(attribute_value, "meaning") )
                         goto __loop_end_do_not_print;
                 }
-
                 attribute = myhtml_attribute_next(attribute);
             }
         }
-
         title_helper(myhtml_node_child(node));
         node = myhtml_node_next(node);
     }
 
 __loop_end_do_not_print:
-    ;
-
+    return output_string.str();
 } 
 
-void print_title(myhtml_tree_node_t* title_node)
+std::string get_title(myhtml_tree_node_t* title_node)
 {
     auto h1_node = myhtml_node_next(myhtml_node_child(title_node));
-    title_helper(myhtml_node_child(h1_node));
-    printf("\n");
+    return title_helper(myhtml_node_child(h1_node));
 }
 
 struct _global_struct
 {
     int failure_number = 0;
-    int print_url_failure_number = 0;
+    int print_entry_failure_number = 0;
 
     myhtml_t* myhtml;
     myhtml_tree_t* tree;
-    myhtml_collection_t* collection;
 } globals;
 
-void parse_page(const std::string& page_buffer)
+myhtml_collection_t* get_page_title_div()
 {
     const char key_value_pairs[][2][100] =
         {
@@ -186,55 +214,102 @@ void parse_page(const std::string& page_buffer)
             {"class", "basic_title nolink"}
         };
 
-    globals.collection = NULL;
-    for ( int i = 0; i < sizeof(key_value_pairs)/sizeof(*key_value_pairs); ++i )
+    myhtml_collection_t* collection;
+
+    for ( int i = 0; i < sizeof(key_value_pairs) / sizeof(*key_value_pairs); ++i )
     {
         const char* key = key_value_pairs[i][0];
         const char* value = key_value_pairs[i][1];
-        // printf("Trying to match %s = %s\n", key, value);
-        globals.collection = myhtml_get_nodes_by_attribute_value(globals.tree, NULL, NULL, true, key, strlen(key), value, strlen(value), NULL);
-        if ( globals.collection && globals.collection->length > 0 )
-        {
-            int print_url_result = print_url(globals.tree);
+        collection = myhtml_get_nodes_by_attribute_value(globals.tree, NULL, NULL, true, key, strlen(key), value, strlen(value), NULL);
 
-            if ( print_url_result == PRINT_URL_REGEX_MATCH_FAILED )
-            {
-                std::ostringstream print_url_failure_filename;
-                print_url_failure_filename << "/tmp/print-url-failure-buffer." << globals.print_url_failure_number++;
-                std::ofstream output_file(print_url_failure_filename.str());
-                output_file << page_buffer << std::flush;
-                continue;
-            }
-
-            print_title(globals.collection->list[0]);
-            // myhtml_serialization_tree_callback(collection->list[0], serialization_callback, NULL);
-            // print_tree(tree, collection->list[0]);
-            break;
-        } 
+        if ( collection && collection->list && collection->length )
+            return collection;
     }
 
-    if ( globals.collection == NULL || globals.collection->length == 0 )
+    return collection;
+}
+
+bool page_suggests_no_entry()
+{
+    myhtml_collection_t* titles_collection = myhtml_get_nodes_by_tag_id(globals.tree, NULL, MyHTML_TAG_TITLE, NULL);
+    if ( titles_collection && titles_collection->list && titles_collection->length )
     {
-        globals.collection = myhtml_get_nodes_by_tag_id(globals.tree, NULL, MyHTML_TAG_TITLE, NULL);
-                
-        if ( globals.collection && globals.collection->list && globals.collection->length )
+        myhtml_tree_node_t* text_node = myhtml_node_child(titles_collection->list[0]);
+        const char* text = myhtml_node_text(text_node, NULL);
+        if ( !std::string(text).compare(u8"の意味 - goo国語辞書") )
         {
-            myhtml_tree_node_t* text_node = myhtml_node_child(globals.collection->list[0]);
-            const char* text = myhtml_node_text(text_node, NULL);
-            if ( !std::string(text).compare(u8"の意味 - goo国語辞書") )
-            {
-                printf("The title of this document suggests there is no entry for this number\n");
-                return;
-            }
+            // printf("The title of this document suggests there is no entry for this number\n");
+            return true;
         }
-
-        printf("Failure #%d!\n", globals.failure_number);
-        std::ostringstream failure_filename;
-        failure_filename << "/tmp/failure-buffer." << globals.failure_number++;
-        std::ofstream output_file(failure_filename.str());
-        output_file << page_buffer << std::flush;
-        return;
     }
+
+    return false;
+}
+
+int guess_entry_number_from_filename(const std::string& filename)
+{
+    simple_string_match_struct result = simple_string_match(filename.c_str(), ".*/([0-9]+).html");
+
+    if ( result.return_code == SIMPLE_STRING_MATCH_SUCCESS )
+    {
+        return strtol(reinterpret_cast<const char*>(result.matched_string), NULL, 10);
+    }
+    else
+    {
+        printf("Failed!\n");
+    }
+
+    return 0;
+}
+
+void record_failure(const std::string& buffer, const std::string& description)
+{
+    std::ofstream conglomerate_file("/tmp/failures.description", std::ofstream::app);
+    conglomerate_file << globals.failure_number << " description: " << description << "\n";
+
+    std::ostringstream failure_filename;
+    failure_filename << "/tmp/" << description << "-failure-buffer." << globals.failure_number++;
+    std::ofstream output_file(failure_filename.str());
+    output_file << buffer << std::flush;
+
+    conglomerate_file.close();
+}
+
+void parse_page(const std::string& page_buffer, const std::string& filename = "")
+{
+    std::string title;
+
+    myhtml_collection_t* entry_title_div_collection = get_page_title_div();
+    if ( not (entry_title_div_collection && entry_title_div_collection->list && entry_title_div_collection->length) )
+    {
+        if ( page_suggests_no_entry() )
+        {
+            title = "No entry associated";
+        }
+        else
+        {
+            title = "Failure";
+            record_failure(page_buffer, "title");
+        }
+    }
+    else
+    {
+        title = get_title(entry_title_div_collection->list[0]);
+    }
+
+    int entry_number = get_entry_number(globals.tree);
+    if ( ! entry_number )
+    {
+        if ( filename != "" )
+        {
+            entry_number = guess_entry_number_from_filename(filename);
+        }
+        else
+        {
+            record_failure(page_buffer, "entry");
+        }
+    }
+    std::cout << entry_number << ": " << title << "\n";
 }
 
 enum SIMPLIFY_ENTRIES_RUN_MODE
@@ -243,18 +318,34 @@ enum SIMPLIFY_ENTRIES_RUN_MODE
     USE_FILENAMES
 };
 
-int main(int argc, const char * argv[])
+void initialize_globals()
 {
-    globals.failure_number = 0;
-    globals.print_url_failure_number = 0;
-
     globals.myhtml = myhtml_create();
     globals.tree = myhtml_tree_create();
-    globals.collection;
 
     myhtml_init(globals.myhtml, MyHTML_OPTIONS_DEFAULT, 1, 0);
     myhtml_tree_init(globals.tree, globals.myhtml);
     myhtml_encoding_set(globals.tree, MyENCODING_UTF_8);
+}
+
+void reinitialize_globals()
+{
+    // Reinitialize everything
+    myhtml_tree_destroy(globals.tree);
+    myhtml_destroy(globals.myhtml);
+
+    initialize_globals();
+}
+
+void clear_failures_log()
+{
+    std::ofstream conglomerate_file("/tmp/failures.description");
+}
+
+int main(int argc, const char * argv[])
+{
+    initialize_globals();
+    clear_failures_log();
 
     SIMPLIFY_ENTRIES_RUN_MODE run_mode;
 
@@ -279,6 +370,12 @@ int main(int argc, const char * argv[])
             {
                 file.open(filename);
 
+                if (!file.is_open())
+                {
+                    std::cout << "Failed to open " << filename << "\n";
+                    continue;
+                }
+
                 file.seekg(0, std::ios::end);
                 file_contents.reserve(file.tellg());
                 file.seekg(0, std::ios::beg);
@@ -290,7 +387,8 @@ int main(int argc, const char * argv[])
                     );
 
                 myhtml_parse(globals.tree, MyENCODING_UTF_8, file_contents.c_str(), file_contents.size());
-                parse_page(file_contents);
+                parse_page(file_contents, filename);
+                reinitialize_globals();
                 file.close();
             }
             break;
@@ -330,17 +428,7 @@ int main(int argc, const char * argv[])
                     strcpy(&buffer[0], remainder.c_str());
                     offset = buffer_length - (found + search_string.length());
 
-                    // Reinitialize everything
-                    myhtml_collection_destroy(globals.collection);
-                    myhtml_tree_destroy(globals.tree);
-                    myhtml_destroy(globals.myhtml);
-
-                    globals.myhtml = myhtml_create();
-                    globals.tree = myhtml_tree_create();
-
-                    myhtml_init(globals.myhtml, MyHTML_OPTIONS_DEFAULT, 1, 0);
-                    myhtml_tree_init(globals.tree, globals.myhtml);
-                    myhtml_encoding_set(globals.tree, MyENCODING_UTF_8);
+                    reinitialize_globals();
                 }
                 else
                 {
@@ -351,7 +439,6 @@ int main(int argc, const char * argv[])
         }
     }
     
-    myhtml_collection_destroy(globals.collection);
     myhtml_tree_destroy(globals.tree);
     myhtml_destroy(globals.myhtml);
 
