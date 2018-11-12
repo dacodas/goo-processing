@@ -109,7 +109,7 @@ int print_url(myhtml_tree_t* tree)
     }
     else
     {
-        printf("Could not match URL!\n");
+        printf("Could not match %s!\n", url);
         return PRINT_URL_REGEX_MATCH_FAILED;
     }
 
