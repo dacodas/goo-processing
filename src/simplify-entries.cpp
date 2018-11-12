@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <memory.h>
 #include <unistd.h>
+#include <vector>
 
 #include <fstream>
 #include <iostream>
@@ -167,127 +168,192 @@ void print_title(myhtml_tree_node_t* title_node)
     printf("\n");
 }
 
-int main(int argc, const char * argv[])
+struct _global_struct
 {
-    int buffer_length = 50000;
-    int offset = 0;
     int failure_number = 0;
     int print_url_failure_number = 0;
 
-    std::string buffer(buffer_length, '\0');
-    myhtml_t* myhtml = myhtml_create();
-    myhtml_tree_t* tree = myhtml_tree_create();
+    myhtml_t* myhtml;
+    myhtml_tree_t* tree;
     myhtml_collection_t* collection;
+} globals;
 
-    myhtml_init(myhtml, MyHTML_OPTIONS_DEFAULT, 1, 0);
-    myhtml_tree_init(tree, myhtml);
-    myhtml_encoding_set(tree, MyENCODING_UTF_8);
+void parse_page(const std::string& page_buffer)
+{
+    const char key_value_pairs[][2][100] =
+        {
+            {"class", "basic_title nolink jn"},
+            {"class", "basic_title nolink"}
+        };
 
-    while ( true )
+    globals.collection = NULL;
+    for ( int i = 0; i < sizeof(key_value_pairs)/sizeof(*key_value_pairs); ++i )
     {
-        std::cin.read(&buffer[offset], buffer_length - offset);
-        auto chars_read = std::cin.gcount();
-
-        // printf("Attempted to read %d chars\n", buffer_length - offset);
-        // printf("I read %d chars\n", chars_read);
-
-        if (chars_read == 0)
+        const char* key = key_value_pairs[i][0];
+        const char* value = key_value_pairs[i][1];
+        // printf("Trying to match %s = %s\n", key, value);
+        globals.collection = myhtml_get_nodes_by_attribute_value(globals.tree, NULL, NULL, true, key, strlen(key), value, strlen(value), NULL);
+        if ( globals.collection && globals.collection->length > 0 )
         {
-            break;
-        }
+            int print_url_result = print_url(globals.tree);
 
-        offset = 0;
-
-        std::string search_string("</html>");
-
-
-        std::size_t found = buffer.find(search_string);
-        if (found != std::string::npos)
-        {
-            std::string remainder(buffer, found + search_string.length());
-            // printf("Found </html> at position %d\n", found);
-            // printf("The rest of the string starts with %.15s\n", remainder.c_str());
-
-            myhtml_parse_chunk(tree, buffer.c_str(), found + search_string.length());
-            myhtml_parse_chunk_end(tree);
-
-            const char key_value_pairs[][2][100] =
+            if ( print_url_result == PRINT_URL_REGEX_MATCH_FAILED )
             {
-                {"class", "basic_title nolink jn"},
-                {"class", "basic_title nolink"}
-            };
-
-            collection = NULL;
-            for ( int i = 0; i < sizeof(key_value_pairs)/sizeof(*key_value_pairs); ++i )
-            {
-                const char* key = key_value_pairs[i][0];
-                const char* value = key_value_pairs[i][1];
-                // printf("Trying to match %s = %s\n", key, value);
-                collection = myhtml_get_nodes_by_attribute_value(tree, NULL, NULL, true, key, strlen(key), value, strlen(value), NULL);
-                if ( collection && collection->length > 0 )
-                {
-                    int print_url_result = print_url(tree);
-
-                    if ( print_url_result == PRINT_URL_REGEX_MATCH_FAILED )
-                    {
-                        std::ostringstream print_url_failure_filename;
-                        print_url_failure_filename << "/tmp/print-url-failure-buffer." << print_url_failure_number++;
-                        std::ofstream output_file(print_url_failure_filename.str());
-                        output_file << buffer << std::flush;
-                        continue;
-                    }
-
-                    print_title(collection->list[0]);
-                    // myhtml_serialization_tree_callback(collection->list[0], serialization_callback, NULL);
-                    // print_tree(tree, collection->list[0]);
-                    break;
-                } 
-            }
-
-            if ( collection == NULL || collection->length == 0 )
-            {
-                collection = myhtml_get_nodes_by_tag_id(tree, NULL, MyHTML_TAG_TITLE, NULL);
-                
-                if ( collection && collection->list && collection->length )
-                {
-                    myhtml_tree_node_t* text_node = myhtml_node_child(collection->list[0]);
-                    const char* text = myhtml_node_text(text_node, NULL);
-                    if ( !std::string(text).compare(u8"の意味 - goo国語辞書") )
-                    {
-                        printf("The title of this document suggests there is no entry for this number\n");
-                        continue;
-                    }
-                }
-
-                printf("Failure #%d!\n", failure_number);
-                std::ostringstream failure_filename;
-                failure_filename << "/tmp/failure-buffer." << failure_number++;
-                std::ofstream output_file(failure_filename.str());
-                output_file << buffer << std::flush;
+                std::ostringstream print_url_failure_filename;
+                print_url_failure_filename << "/tmp/print-url-failure-buffer." << globals.print_url_failure_number++;
+                std::ofstream output_file(print_url_failure_filename.str());
+                output_file << page_buffer << std::flush;
                 continue;
             }
-    
-            strcpy(&buffer[0], remainder.c_str());
-            offset = buffer_length - (found + search_string.length());
 
-            myhtml_collection_destroy(collection);
-            myhtml_tree_destroy(tree);
-            myhtml_destroy(myhtml);
-
-            myhtml = myhtml_create();
-            tree = myhtml_tree_create();
-
-            myhtml_init(myhtml, MyHTML_OPTIONS_DEFAULT, 1, 0);
-            myhtml_tree_init(tree, myhtml);
-            myhtml_encoding_set(tree, MyENCODING_UTF_8);
-        }
-        else
-        {
-            myhtml_parse_chunk(tree, buffer.c_str(), buffer.length());
-            // printf("Still parsing...\n");
-        }
-
+            print_title(globals.collection->list[0]);
+            // myhtml_serialization_tree_callback(collection->list[0], serialization_callback, NULL);
+            // print_tree(tree, collection->list[0]);
+            break;
+        } 
     }
+
+    if ( globals.collection == NULL || globals.collection->length == 0 )
+    {
+        globals.collection = myhtml_get_nodes_by_tag_id(globals.tree, NULL, MyHTML_TAG_TITLE, NULL);
+                
+        if ( globals.collection && globals.collection->list && globals.collection->length )
+        {
+            myhtml_tree_node_t* text_node = myhtml_node_child(globals.collection->list[0]);
+            const char* text = myhtml_node_text(text_node, NULL);
+            if ( !std::string(text).compare(u8"の意味 - goo国語辞書") )
+            {
+                printf("The title of this document suggests there is no entry for this number\n");
+                return;
+            }
+        }
+
+        printf("Failure #%d!\n", globals.failure_number);
+        std::ostringstream failure_filename;
+        failure_filename << "/tmp/failure-buffer." << globals.failure_number++;
+        std::ofstream output_file(failure_filename.str());
+        output_file << page_buffer << std::flush;
+        return;
+    }
+}
+
+enum SIMPLIFY_ENTRIES_RUN_MODE
+{
+    USE_STDIN,
+    USE_FILENAMES
+};
+
+int main(int argc, const char * argv[])
+{
+    globals.failure_number = 0;
+    globals.print_url_failure_number = 0;
+
+    globals.myhtml = myhtml_create();
+    globals.tree = myhtml_tree_create();
+    globals.collection;
+
+    myhtml_init(globals.myhtml, MyHTML_OPTIONS_DEFAULT, 1, 0);
+    myhtml_tree_init(globals.tree, globals.myhtml);
+    myhtml_encoding_set(globals.tree, MyENCODING_UTF_8);
+
+    SIMPLIFY_ENTRIES_RUN_MODE run_mode;
+
+    if ( argc > 1 )
+    {
+        run_mode = USE_FILENAMES;
+    }
+    else
+    {
+        run_mode = USE_STDIN;
+    }
+
+    switch (run_mode)
+    {
+        case USE_FILENAMES:
+        {
+            std::ifstream file;
+            std::string file_contents;
+            std::vector<std::string> filenames(&argv[1], argv + argc);
+
+            for ( const auto& filename : filenames )
+            {
+                file.open(filename);
+
+                file.seekg(0, std::ios::end);
+                file_contents.reserve(file.tellg());
+                file.seekg(0, std::ios::beg);
+
+                // Go from the file.rdbuf() to end-of-stream
+                file_contents.assign(
+                    std::istreambuf_iterator<char>(file),
+                    std::istreambuf_iterator<char>()
+                    );
+
+                myhtml_parse(globals.tree, MyENCODING_UTF_8, file_contents.c_str(), file_contents.size());
+                parse_page(file_contents);
+                file.close();
+            }
+            break;
+        }
+        case USE_STDIN:
+        {
+            int buffer_length = 50000;
+            int offset = 0;
+            std::string buffer(buffer_length, '\0');
+            std::string search_string("</html>");
+
+            while ( true )
+            {
+                std::cin.read(&buffer[offset], buffer_length - offset);
+                offset = 0;
+
+                auto chars_read = std::cin.gcount();
+                if (chars_read == 0)
+                {
+                    break;
+                }
+
+                std::size_t found = buffer.find(search_string);
+                if (found != std::string::npos)
+                {
+                    std::string remainder(buffer, found + search_string.length());
+                    // printf("Found </html> at position %d\n", found);
+                    // printf("The rest of the string starts with %.15s\n", remainder.c_str());
+
+                    myhtml_parse_chunk(globals.tree, buffer.c_str(), found + search_string.length());
+                    myhtml_parse_chunk_end(globals.tree);
+
+                    parse_page(buffer);
+
+                    // Transfer the remainder to the beginning of the
+                    // buffer
+                    strcpy(&buffer[0], remainder.c_str());
+                    offset = buffer_length - (found + search_string.length());
+
+                    // Reinitialize everything
+                    myhtml_collection_destroy(globals.collection);
+                    myhtml_tree_destroy(globals.tree);
+                    myhtml_destroy(globals.myhtml);
+
+                    globals.myhtml = myhtml_create();
+                    globals.tree = myhtml_tree_create();
+
+                    myhtml_init(globals.myhtml, MyHTML_OPTIONS_DEFAULT, 1, 0);
+                    myhtml_tree_init(globals.tree, globals.myhtml);
+                    myhtml_encoding_set(globals.tree, MyENCODING_UTF_8);
+                }
+                else
+                {
+                    myhtml_parse_chunk(globals.tree, buffer.c_str(), buffer.length());
+                    // printf("Still parsing...\n");
+                }
+            }
+        }
+    }
+    
+    myhtml_collection_destroy(globals.collection);
+    myhtml_tree_destroy(globals.tree);
+    myhtml_destroy(globals.myhtml);
 
     return 0;
 }
