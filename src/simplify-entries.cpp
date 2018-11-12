@@ -16,6 +16,7 @@
 #include <pcre2.h>
 
 #include <myhtml/api.h>
+#include <mycore/mystring.h>
 
 enum GENERAL_RETURN
 {
@@ -160,6 +161,12 @@ std::string title_helper(myhtml_tree_node_t* node)
 {
     std::ostringstream output_string;
 
+    // mycore_string_raw_t str_raw;
+    // mycore_string_raw_clean_all(&str_raw);
+    // myhtml_serialization_tree_buffer(node, &str_raw);
+    // printf("%s\n", str_raw.data);
+    // mycore_string_raw_destroy(&str_raw, false);
+
     while (node)
     {
         myhtml_tag_id_t tag_id = myhtml_node_tag_id(node);
@@ -182,6 +189,10 @@ std::string title_helper(myhtml_tree_node_t* node)
                 }
                 attribute = myhtml_attribute_next(attribute);
             }
+        }
+        else if ( tag_id == MyHTML_TAG_SUP)
+        {
+            // output_string << myhtml_node_text(myhtml_node_child(node), NULL);
         }
         title_helper(myhtml_node_child(node));
         node = myhtml_node_next(node);
