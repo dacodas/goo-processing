@@ -133,12 +133,16 @@ std::vector<std::string> process_alternatives(int entry_number, std::string& rea
 
 int main(int argc, char* argv[])
 {
-    std::ifstream input_file ("/home/dacoda/projects/goo-processing/results/readings-with-alternatives-sans-外来語");
+    std::ifstream input_file ("/home/dacoda/projects/goo-processing/results/perfect-readings.total");
     std::string line;
 
     pcrecpp::RE line_pattern("(\\d+): (.*)");
 
+    // Disregard old readings, any pattern that has 【 】 at the end
+    // is an "alternative" reading
     pcrecpp::RE alternative_pattern("(.*?)(〔.*〕)?【(.*)】$");
+    pcrecpp::RE regular_pattern("(.*?)(〔.*〕)?$");
+    pcrecpp::RE strange_pattern("(.*?)【(.*)】(〔.*〕)$");
 
     while ( std::getline(input_file, line) )
     {
@@ -149,19 +153,22 @@ int main(int argc, char* argv[])
         std::string reading;
         std::string old_readings;
         std::string alternatives;
-        alternative_pattern.FullMatch(title, &reading, &old_readings, &alternatives);
-
-        // std::cout << "Entry is " << entry_number << " and title is " << title << "\n";
-        // std::cout << "Reading: " << reading << "\n";
-        // std::cout << "Old readings: " << old_readings << "\n";
-        // std::cout << "Alternatives: " << alternatives << "\n";
-        process_alternatives(entry_number, reading, alternatives);
+        if ( alternative_pattern.FullMatch(title, &reading, &old_readings, &alternatives) )
+        {
+            process_alternatives(entry_number, reading, alternatives);
+        }
+        else if ( strange_pattern.FullMatch(title, &reading, &alternatives, &old_readings) )
+        {
+            process_alternatives(entry_number, reading, alternatives);
+        }
+        else if ( regular_pattern.FullMatch(title, &reading) )
+        {
+            std::cout << entry_number << ": " << reading << "\n";
+        }
+        else
+        {
+            std::cout << entry_number << ": Failure!";
+        }
     }
-
-    std::vector<pcrecpp::RE>
-    {
-        ".*【.*】$",
-            ".*【.*】[^$]",
-            ".*[^】]〔.*〕$",
-            };
 }
+

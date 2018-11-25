@@ -1,4 +1,7 @@
-all: build-trie simplify-entries
+all: build-trie simplify-entries process-trie
+
+process-trie: src/process-trie.cpp
+	g++ -ggdb src/process-trie.cpp -lpcrecpp -o bin/process-trie
 
 build-trie: src/build-trie.cpp
 	g++ -ggdb src/build-trie.cpp -lpcrecpp -o bin/build-trie
