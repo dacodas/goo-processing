@@ -186,6 +186,9 @@ int main(int argc, char* argv[])
         return 1;
     }
 
+    int pid;
+    int counter = 0;
+
     while ( true )
     {
         printf("Starting to listen...\n");
@@ -201,6 +204,25 @@ int main(int argc, char* argv[])
         {
             printf("Failure accepting new socket!");
             return 1;
+        }
+
+        pid = fork();
+        if ( pid == -1 )
+        {
+            close(new_socket_file_descriptor);
+        }
+        else if ( pid > 0 )
+        {
+            printf("I am a parent process, sir\n");
+            printf("Closing socket FD because on the child should be using it now\n");
+            close(new_socket_file_descriptor);
+            printf("Listening for %d-th connection...\n", ++counter);
+            continue;
+        }
+        else if ( pid == 0 )
+        {
+            printf("I am a child process, sir\n");
+            printf("I am the %d-th process\n", counter);
         }
 
         printf("Accepted connection from %s on port %d\n",
