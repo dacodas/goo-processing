@@ -15,6 +15,9 @@
 #include <pcrecpp.h>
 #include <utf8.h>
 
+#ifndef GOO_TRIE_LOCATION_STRING 
+#define GOO_TRIE_LOCATION_STRING "/home/dacoda/projects/goo-processing/results/trie"
+#endif 
 
 std::string get_unicode_char(const utf8::unchecked::iterator<std::string::iterator>& character)
 {
@@ -128,7 +131,8 @@ private:
 
 int main(int argc, char* argv[])
 {
-    std::ifstream input_file ("/home/dacoda/projects/goo-processing/results/trie");
+    printf("Using trie file %s\n", GOO_TRIE_LOCATION_STRING);
+    std::ifstream input_file (GOO_TRIE_LOCATION_STRING);
     std::string line;
 
     pcrecpp::RE line_pattern("(\\d+): (.*)");
