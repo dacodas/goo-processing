@@ -13,7 +13,7 @@ process-trie: src/process-trie.cpp prepare
 .PHONY: clean-everything prepare
 
 prepare:
-	mkdir bin
+	mkdir -p bin
 
 clean-everything:
 	goo-process clear_all_results
