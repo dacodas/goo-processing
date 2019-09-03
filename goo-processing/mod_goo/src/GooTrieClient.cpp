@@ -17,8 +17,7 @@
 
 #include <arpa/inet.h>
 
-using GooTrieEntry = std::pair<std::string, std::string>;
-using GooTrieEntries = std::vector<GooTrieEntry>;
+#include "GooTrieClient.hpp"
 
 // get sockaddr, IPv4 or IPv6:
 void *get_in_addr(struct sockaddr *sa)

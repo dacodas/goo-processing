@@ -1,9 +1,11 @@
+#include <iostream>
+
 #include <libxml/tree.h>
 #include <libxml/HTMLparser.h>
 #include <libxml/xpath.h>
 #include <libxml/xpathInternals.h>
 
-void test_xml(const std::string& html)
+std::string GrabEntryDefinition(const std::string& html)
 {
     std::string xpath {"//div[@class=\"contents\"]"};
     xmlDoc* document;
@@ -21,14 +23,14 @@ void test_xml(const std::string& html)
     if ( document == NULL )
     {
         std::cerr << "Document not parsed correctly.\n";
-        return;
+        return "";
     }
 
     context = xmlXPathNewContext(document);
     if ( context == NULL )
     {
         std::cerr << "Error creating context\n";
-        return;
+        return "";
     }
 
     result = xmlXPathEvalExpression(
@@ -38,24 +40,28 @@ void test_xml(const std::string& html)
     if ( result == NULL )
     {
         std::cerr << "Error evaluating expression\n";
-        return;
+        return "";
     } 
 
     if ( xmlXPathNodeSetIsEmpty(result->nodesetval) )
     {
         std::cerr << "No result for that XPath\n";
-        return;
+        return "";
     }
 
     xmlNodeSet* node_set = result->nodesetval;
     xmlNode** node_array = node_set->nodeTab;
     size_t size = node_set->nodeNr;
 
-    xmlCharEncodingHandler* encoding_handler = xmlFindCharEncodingHandler("UTF-8");
-
     xmlBuffer* buffer = xmlBufferCreate();
     xmlNodeDump(buffer, document, node_array[0], 1, 1);
 
-    puts(reinterpret_cast<char*>(buffer->content));
-    // Clean up document, context, result, buffer
+    std::string string {reinterpret_cast<char*>(buffer->content)};
+
+    xmlBufferFree(buffer);
+    xmlXPathFreeObject(result);
+    xmlXPathFreeContext(context);
+    xmlFreeDoc(document);
+
+    return string;
 }

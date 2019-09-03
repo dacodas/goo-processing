@@ -1,6 +1,10 @@
 #include <iostream>
 #include <sstream>
 
+#include "GooDictionaryClient.hpp"
+#include "GooTrieClient.hpp"
+#include "GrabEntryDefinition.hpp"
+
 // module AP_MODULE_DECLARE_DATA mod_goo =
 // {
 //     STANDARD20_MODULE_STUFF,
@@ -43,8 +47,34 @@
 
 int main(int argc, char* argv[])
 {
-    std::string result = curl_test();
-    test_xml(result);
+    GooDictionaryClient* dict_client = goo_dictionary_initialize();
+    if ( dict_client == nullptr )
+    {
+        std::cerr << "Error initializing GooDictionaryClient\n";
+        return 1;
+    }
+
+    int trie_client = goo_trie_connect("localhost", "7081");
+    if ( trie_client < 0 )
+    {
+        std::cerr << "Error initializing goo_trie_client\n";
+        return 1;
+    }
+
+    GooTrieEntries entries = goo_trie_query("俺", trie_client);
+
+    for ( const GooTrieEntry& entry : entries )
+    {
+        std::cout << "Name: " << entry.first << ", number: " << entry.second << "\n";
+
+        std::string result{};
+        goo_dictionary_query(dict_client, "http://localhost:8080", entry.second, result);
+
+        std::cout << "Got response of length " << result.size() << "!\n";
+
+        std::string definition = GrabEntryDefinition(result);
+        std::cout << "Got definition of length " << definition.size() << "!\n";
+    }
 
     return 0;
 }
