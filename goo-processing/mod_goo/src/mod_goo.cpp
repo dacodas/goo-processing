@@ -2,61 +2,90 @@
 #include <sstream>
 
 #include <stdio.h>
-#include "ap_config.h"
-#include "ap_provider.h"
+
 #include "httpd.h"
 #include "http_core.h"
-#include "http_config.h"
-#include "http_log.h"
 #include "http_protocol.h"
 #include "http_request.h"
+
+#include "apr_strings.h"
+#include "apr_network_io.h"
+#include "apr_md5.h"
+#include "apr_sha1.h"
+#include "apr_hash.h"
+#include "apr_base64.h"
+#include "apr_dbd.h"
+#include <apr_file_info.h>
+#include <apr_file_io.h>
+#include <apr_tables.h>
+#include "util_script.h"
 
 #include "GooDictionaryClient.hpp"
 #include "GooTrieClient.hpp"
 #include "GrabEntryDefinition.hpp"
 
+/* Define prototypes of our functions in this module */
+extern "C" void register_hooks(apr_pool_t *pool);
+extern "C" int goo_handler(request_rec *r);
 
-
-extern "C" int example_handler(request_rec *r)
+/* Define our module as an entity and assign a function for registering hooks  */
+module AP_MODULE_DECLARE_DATA   goo_module =
 {
-    /* Set the appropriate content type */
-    ap_set_content_type(r, "text/json");
+    STANDARD20_MODULE_STUFF,
+    NULL,            // Per-directory configuration handler
+    NULL,            // Merge handler for per-directory configurations
+    NULL,            // Per-server configuration handler
+    NULL,            // Merge handler for per-server configurations
+    NULL,            // Any directives we may have for httpd
+    register_hooks   // Our hook registering function
+};
 
-    /* Print out the IP address of the client connecting to us: */
-    ap_rprintf(r, "<h2>Hello, %s!</h2>", r->useragent_ip);
+
+/* register_hooks: Adds a hook to the httpd process */
+extern "C" void register_hooks(apr_pool_t *pool) 
+{
     
-    /* If we were reached through a GET or a POST request, be happy, else sad. */
-    if ( !strcmp(r->method, "POST") ) {
-        ap_rputs("You used a POST method, that makes us happy!<br/>", r);
-    }
-    else {
-        ap_rputs("You did not use POST, that makes us sad :(<br/>", r);
-    }
-
-    /* Lastly, if there was a query string, let's print that too! */
-    if (r->args) {
-        ap_rprintf(r, "Your query string was: %s", r->args);
-    }
-    return OK;
+    /* Hook the request handler */
+    ap_hook_handler(goo_handler, NULL, NULL, APR_HOOK_LAST);
 }
 
-extern "C" void register_hooks(apr_pool_t *pool)
+/* The handler function for our module.
+ * This is where all the fun happens!
+ */
+
+apr_table_t* goo_parse_args(request_rec* r) {
+    
+    apr_table_t* GET;
+    apr_array_header_t* POST;
+    
+    ap_args_to_table(r, &GET);
+    ap_parse_form_data(r, NULL, &POST, -1, 8192);
+}
+
+const char* goo_get_value(apr_table_t* table, const char* key) 
 {
-    /* Create a hook in the request handler, so we get called when a request arrives */
-    ap_hook_handler(example_handler, NULL, NULL, APR_HOOK_LAST);
+    const apr_array_header_t    *fields;
+    int                         i;
+    //apr_table_elts
+    
 }
 
-extern "C" {
-    module AP_MODULE_DECLARE_DATA mod_goo =
-    {
-        STANDARD20_MODULE_STUFF,
-        NULL,
-        NULL,
-        NULL,
-        NULL,
-        NULL,
-        register_hooks   /* Our hook registering function */
-    };
+extern "C" int goo_handler(request_rec *r)
+{
+    apr_table_t* GET;
+    apr_array_header_t* POST;
+    
+    // Check that the "goo-handler" handler is being called.
+    if (!r->handler || strcmp(r->handler, "goo-handler")) return (DECLINED);
+    
+    // Set the appropriate content type
+    ap_set_content_type(r, "text/html");
+    
+    // Print a title and some general information
+    ap_rprintf(r, "<b>Hello</b> world!<br/>");
+    
+    // Let Apache know that we responded to this request.
+    return OK;
 }
 
 // int main(int argc, char* argv[])
