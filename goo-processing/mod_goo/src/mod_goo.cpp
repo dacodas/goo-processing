@@ -21,6 +21,8 @@
 #include <apr_tables.h>
 #include "util_script.h"
 
+#include "mod_goo.hpp"
+
 #include "GooDictionaryClient.hpp"
 #include "GooTrieClient.hpp"
 #include "GrabEntryDefinition.hpp"
@@ -57,7 +59,7 @@ int goo_query(request_rec* r, const char* reading)
         std::string definition = GrabEntryDefinition(result);
         syslog(LOG_INFO, "Got definition of length %d", definition.size());
 
-        ap_rprintf(r, "<h1>%s</h1><div class='definition'>%s</div>", entry.first.c_str(), definition.c_str());
+        ap_rprintf(r, R"|(<li><h1>%s</h1><div class="definition">%s</div>)|", entry.first.c_str(), definition.c_str());
     }
 
     return 0;
@@ -128,13 +130,10 @@ extern "C" int goo_handler(request_rec *r)
     ap_set_content_type(r, "text/html");
     
     // Print a title and some general information
-    ap_rprintf(r, "<html><body>");
-    ap_rprintf(r, "<b>Hello</b> world!<br/>You asked for '%s'<br/>", reading);
+    ap_rprintf(r, goo_response_prefix);
     goo_query(r, reading);
-    ap_rprintf(r, "</body></html>");
-
+    ap_rprintf(r, goo_response_suffix);
 
     // Let Apache know that we responded to this request.
     return OK;
 }
-
