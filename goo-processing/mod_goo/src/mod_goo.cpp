@@ -2,6 +2,7 @@
 #include <sstream>
 
 #include <stdio.h>
+#include <syslog.h>
 
 #include "httpd.h"
 #include "http_core.h"
@@ -24,6 +25,44 @@
 #include "GooTrieClient.hpp"
 #include "GrabEntryDefinition.hpp"
 
+int goo_query(request_rec* r, const char* reading)
+{
+    GooDictionaryClient* dict_client = goo_dictionary_initialize();
+    if ( dict_client == nullptr )
+    {
+        syslog(LOG_ERR, "Error initializing GooDictionaryClient");
+        return 1;
+    }
+
+    int trie_client = goo_trie_connect("localhost", "7081");
+    if ( trie_client < 0 )
+    {
+        syslog(LOG_ERR, "Error initializing GooTrieClient");
+        return 1;
+    }
+
+    GooTrieEntries entries = goo_trie_query(reading, trie_client);
+
+    // for ( const GooTrieEntry& entry : entries )
+    for ( size_t i = 0; i < 10; ++i )
+    {
+        const GooTrieEntry entry = entries[i];
+
+        syslog(LOG_INFO, "Name: %s, number: %s", entry.first.c_str(), entry.second.c_str());
+
+        std::string result{};
+        goo_dictionary_query(dict_client, "http://localhost:8080", entry.second, result);
+        syslog(LOG_INFO, "Got response of length %d", result.size());
+
+        std::string definition = GrabEntryDefinition(result);
+        syslog(LOG_INFO, "Got definition of length %d", definition.size());
+
+        ap_rprintf(r, "<h1>%s</h1><div class='definition'>%s</div>", entry.first.c_str(), definition.c_str());
+    }
+
+    return 0;
+}
+
 /* Define prototypes of our functions in this module */
 extern "C" void register_hooks(apr_pool_t *pool);
 extern "C" int goo_handler(request_rec *r);
@@ -44,7 +83,11 @@ module AP_MODULE_DECLARE_DATA   goo_module =
 /* register_hooks: Adds a hook to the httpd process */
 extern "C" void register_hooks(apr_pool_t *pool) 
 {
-    
+    setlogmask(LOG_UPTO (LOG_INFO));
+    openlog("mod_goo", LOG_CONS | LOG_PID | LOG_NDELAY, LOG_LOCAL1);
+    syslog(LOG_NOTICE, "mod_goo has sent you a message");
+    syslog(LOG_INFO, "Here is some info, man");
+
     /* Hook the request handler */
     ap_hook_handler(goo_handler, NULL, NULL, APR_HOOK_LAST);
 }
@@ -53,8 +96,8 @@ extern "C" void register_hooks(apr_pool_t *pool)
  * This is where all the fun happens!
  */
 
-apr_table_t* goo_parse_args(request_rec* r) {
-    
+apr_table_t* goo_parse_args(request_rec* r)
+{
     apr_table_t* GET;
     apr_array_header_t* POST;
     
@@ -77,49 +120,21 @@ extern "C" int goo_handler(request_rec *r)
     
     // Check that the "goo-handler" handler is being called.
     if (!r->handler || strcmp(r->handler, "goo-handler")) return (DECLINED);
+
+    ap_args_to_table(r, &GET);
+    const char* reading = apr_table_get(GET, "reading");
     
     // Set the appropriate content type
     ap_set_content_type(r, "text/html");
     
     // Print a title and some general information
-    ap_rprintf(r, "<b>Hello</b> world!<br/>");
-    
+    ap_rprintf(r, "<html><body>");
+    ap_rprintf(r, "<b>Hello</b> world!<br/>You asked for '%s'<br/>", reading);
+    goo_query(r, reading);
+    ap_rprintf(r, "</body></html>");
+
+
     // Let Apache know that we responded to this request.
     return OK;
 }
-
-// int main(int argc, char* argv[])
-// {
-//     GooDictionaryClient* dict_client = goo_dictionary_initialize();
-//     if ( dict_client == nullptr )
-//     {
-//         std::cerr << "Error initializing GooDictionaryClient\n";
-//         return 1;
-//     }
-
-//     int trie_client = goo_trie_connect("localhost", "7081");
-//     if ( trie_client < 0 )
-//     {
-//         std::cerr << "Error initializing goo_trie_client\n";
-//         return 1;
-//     }
-
-//     GooTrieEntries entries = goo_trie_query("俺", trie_client);
-
-//     for ( const GooTrieEntry& entry : entries )
-//     {
-//         std::cout << "Name: " << entry.first << ", number: " << entry.second << "\n";
-
-//         std::string result{};
-//         goo_dictionary_query(dict_client, "http://localhost:8080", entry.second, result);
-
-//         std::cout << "Got response of length " << result.size() << "!\n";
-
-//         std::string definition = GrabEntryDefinition(result);
-//         std::cout << "Got definition of length " << definition.size() << "!\n";
-//     }
-
-//     return 0;
-// }
-
 
