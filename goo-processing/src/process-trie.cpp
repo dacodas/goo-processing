@@ -38,7 +38,8 @@ public:
     enum class OUTPUT_FORMAT
     {
         NORMAL,
-        ELISP
+        ELISP,
+        SIMPLE
     };
 
     struct print_words_configuration_s
@@ -67,6 +68,13 @@ public:
                 case ( OUTPUT_FORMAT::NORMAL ):
                 {
                     interstitial = " -> ";
+                    break;
+                }
+                case ( OUTPUT_FORMAT::SIMPLE ):
+                {
+                    before = "";
+                    interstitial = "\x1f";
+                    after = "";
                     break;
                 }
                 case ( OUTPUT_FORMAT::ELISP ):
@@ -264,7 +272,7 @@ int main(int argc, char* argv[])
                 Node::print_words_configuration_t configuration =
                     { .starting_string = &word,
                       .output = &output,
-                      .format = Node::OUTPUT_FORMAT::ELISP };
+                      .format = Node::OUTPUT_FORMAT::SIMPLE};
 
                 if ( pattern.FullMatch(string_buffer, &word) )
                 {
@@ -286,9 +294,9 @@ int main(int argc, char* argv[])
                     }
                     else
                     {
-                        output << "#(";
+                        // output << "#(";
                         current_node->print_all_words_from_here(configuration);
-                        output << ")";
+                        // output << ")";
                         auto output_string = output.str();
                         send(new_socket_file_descriptor, output_string.c_str(), output_string.length(), 0);
 
