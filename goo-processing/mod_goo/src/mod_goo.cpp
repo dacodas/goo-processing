@@ -27,6 +27,47 @@
 #include "GooTrieClient.hpp"
 #include "GrabEntryDefinition.hpp"
 
+typedef struct {
+    int         enabled;
+    const char *goo_dictionary_host;
+    const char *goo_dictionary_port;
+    const char *goo_trie_host;
+    const char *goo_trie_port;
+} goo_config;
+
+goo_config config;
+
+const char* goo_set_enabled(cmd_parms* cmd, void* cfg, const char* arg)
+{
+    if ( !strcasecmp(arg, "on") ) config.enabled = 1;
+    else config.enabled = 0;
+    return NULL;
+}
+
+const char* goo_set_goo_dictionary_host(cmd_parms* cmd, void* cfg, const char* arg1, const char* arg2)
+{
+    config.goo_dictionary_host = arg1;
+    config.goo_dictionary_port = arg2;
+    return NULL;
+}
+
+const char* goo_set_goo_trie_host(cmd_parms* cmd, void* cfg, const char* arg1, const char* arg2)
+{
+    config.goo_trie_host = arg1;
+    config.goo_trie_port = arg2;
+    return NULL;
+}
+
+extern "C" {
+    static const command_rec goo_directives[] =
+    {
+        AP_INIT_TAKE1("gooEnabled", (const char* (*)()) goo_set_enabled, NULL, RSRC_CONF, "Handle these things as requests to goo search"),
+        AP_INIT_TAKE2("gooDictionaryHost", (const char* (*)()) goo_set_goo_dictionary_host, NULL, RSRC_CONF, "The host and port of goo-dictionary"),
+        AP_INIT_TAKE2("gooTrieHost", (const char* (*)()) goo_set_goo_trie_host, NULL, RSRC_CONF, "The host and port of goo-trie"),
+        { NULL }
+    };
+}
+
 int print_table_keys(void* rec, const char* key, const char* value)
 {
     syslog(LOG_INFO, "%s: %s", key, value);
@@ -35,6 +76,10 @@ int print_table_keys(void* rec, const char* key, const char* value)
 
 int goo_query(request_rec* r, const char* reading)
 {
+    syslog(LOG_INFO, "Attempting connections to %s:%s (trie) and %s:%s (dictionary)",
+           config.goo_trie_host, config.goo_trie_port,
+           config.goo_dictionary_host, config.goo_dictionary_port);
+
     GooDictionaryClient* dict_client = goo_dictionary_initialize();
     if ( dict_client == nullptr )
     {
@@ -42,12 +87,15 @@ int goo_query(request_rec* r, const char* reading)
         return 1;
     }
 
-    int trie_client = goo_trie_connect("localhost", "7081");
+    int trie_client = goo_trie_connect(config.goo_trie_host, config.goo_trie_port);
     if ( trie_client < 0 )
     {
         syslog(LOG_ERR, "Error initializing GooTrieClient");
         return 1;
     }
+
+    std::ostringstream goo_dictionary_host_oss;
+    goo_dictionary_host_oss << "http://" << config.goo_dictionary_host << ":" << config.goo_dictionary_port;
 
     GooTrieEntries entries = goo_trie_query(reading, trie_client);
 
@@ -59,7 +107,7 @@ int goo_query(request_rec* r, const char* reading)
         syslog(LOG_INFO, "Name: %s, number: %s", entry.first.c_str(), entry.second.c_str());
 
         std::string result{};
-        goo_dictionary_query(dict_client, "http://localhost:8080", entry.second, result);
+        goo_dictionary_query(dict_client, goo_dictionary_host_oss.str().c_str(), entry.second, result);
         syslog(LOG_INFO, "Got response of length %d", result.size());
 
         std::string definition = GrabEntryDefinition(result);
@@ -83,7 +131,7 @@ module AP_MODULE_DECLARE_DATA   goo_module =
     NULL,            // Merge handler for per-directory configurations
     NULL,            // Per-server configuration handler
     NULL,            // Merge handler for per-server configurations
-    NULL,            // Any directives we may have for httpd
+    goo_directives,  // Any directives we may have for httpd
     register_hooks   // Our hook registering function
 };
 
@@ -102,6 +150,8 @@ extern "C" void register_hooks(apr_pool_t *pool)
 
 extern "C" int goo_handler(request_rec *r)
 {
+    syslog(LOG_NOTICE, "Querying...");
+
     apr_table_t* GET;
     apr_array_header_t* POST;
     
