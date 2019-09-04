@@ -1,5 +1,10 @@
 #pragma once 
 
+// Instead of doing this, let's read in a static CSS file from a
+// configuration directive
+
+// https://httpd.apache.org/docs/2.4/developer/modguide.html
+
 const char* goo_response_prefix = R"|(
 <html>
     <head>

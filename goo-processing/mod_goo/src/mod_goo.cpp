@@ -27,6 +27,12 @@
 #include "GooTrieClient.hpp"
 #include "GrabEntryDefinition.hpp"
 
+int print_table_keys(void* rec, const char* key, const char* value)
+{
+    syslog(LOG_INFO, "%s: %s", key, value);
+    return 1;
+}
+
 int goo_query(request_rec* r, const char* reading)
 {
     GooDictionaryClient* dict_client = goo_dictionary_initialize();
@@ -46,7 +52,7 @@ int goo_query(request_rec* r, const char* reading)
     GooTrieEntries entries = goo_trie_query(reading, trie_client);
 
     // for ( const GooTrieEntry& entry : entries )
-    for ( size_t i = 0; i < 10; ++i )
+    for ( size_t i = 0; i < 10 and i < entries.size(); ++i )
     {
         const GooTrieEntry entry = entries[i];
 
@@ -94,27 +100,6 @@ extern "C" void register_hooks(apr_pool_t *pool)
     ap_hook_handler(goo_handler, NULL, NULL, APR_HOOK_LAST);
 }
 
-/* The handler function for our module.
- * This is where all the fun happens!
- */
-
-apr_table_t* goo_parse_args(request_rec* r)
-{
-    apr_table_t* GET;
-    apr_array_header_t* POST;
-    
-    ap_args_to_table(r, &GET);
-    ap_parse_form_data(r, NULL, &POST, -1, 8192);
-}
-
-const char* goo_get_value(apr_table_t* table, const char* key) 
-{
-    const apr_array_header_t    *fields;
-    int                         i;
-    //apr_table_elts
-    
-}
-
 extern "C" int goo_handler(request_rec *r)
 {
     apr_table_t* GET;
@@ -123,16 +108,25 @@ extern "C" int goo_handler(request_rec *r)
     // Check that the "goo-handler" handler is being called.
     if (!r->handler || strcmp(r->handler, "goo-handler")) return (DECLINED);
 
+    // Print out headers
+    // apr_table_do(print_table_keys, (void*) 0, r->headers_in);
+
     ap_args_to_table(r, &GET);
     const char* reading = apr_table_get(GET, "reading");
-    
-    // Set the appropriate content type
-    ap_set_content_type(r, "text/html");
-    
-    // Print a title and some general information
-    ap_rprintf(r, goo_response_prefix);
-    goo_query(r, reading);
-    ap_rprintf(r, goo_response_suffix);
+
+    const char* requested_content_type = apr_table_get(r->headers_in, "Accept");
+    if ( strstr(requested_content_type, "application/vnd+orihime.goo-results+html") != NULL ) 
+    {
+        ap_set_content_type(r, "application/vnd+orihime.goo-results+html");
+        goo_query(r, reading);
+    }
+    else 
+    {
+        ap_set_content_type(r, "text/html");
+        ap_rprintf(r, goo_response_prefix);
+        goo_query(r, reading);
+        ap_rprintf(r, goo_response_suffix);
+    }
 
     // Let Apache know that we responded to this request.
     return OK;
