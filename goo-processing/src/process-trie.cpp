@@ -10,13 +10,14 @@
 #include <arpa/inet.h>
 #include <stdint.h>
 #include <unistd.h>
+#include <signal.h>
 #include <sstream>
 
 #include <pcrecpp.h>
 #include <utf8.h>
 
 #ifndef GOO_TRIE_LOCATION_STRING 
-#define GOO_TRIE_LOCATION_STRING "/home/dacoda/projects/goo-processing/results/trie"
+#define GOO_TRIE_LOCATION_STRING "/usr/share/goo-trie/trie"
 #endif 
 
 std::string get_unicode_char(const utf8::unchecked::iterator<std::string::iterator>& character)
@@ -229,6 +230,7 @@ int main(int argc, char* argv[])
             printf("Closing socket FD because on the child should be using it now\n");
             close(new_socket_file_descriptor);
             printf("Listening for %d-th connection...\n", ++counter);
+            signal(SIGCHLD, SIG_IGN);
             continue;
         }
         else if ( pid == 0 )

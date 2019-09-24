@@ -1,0 +1,30 @@
+#!/bin/bash
+
+# CONTAINER=$(buildah from container-registry.dacodastrack.com/mod-goo)
+CONTAINER=$(buildah from scratch)
+
+buildah copy "$CONTAINER" 'bin/process-trie' '/process-trie'
+buildah copy "$CONTAINER" 'results/trie' '/usr/share/goo-trie/trie'
+
+MOUNT=$(buildah mount $CONTAINER)
+mkdir $MOUNT/lib64
+buildah copy "$CONTAINER" /lib64/ld-linux-x86-64.so.2 /lib64
+buildah copy "$CONTAINER" /usr/lib/gcc/x86_64-pc-linux-gnu/8.3.0/libstdc++.so.6 /lib64/libstdc++.so.6
+buildah copy "$CONTAINER" /usr/lib/gcc/x86_64-pc-linux-gnu/8.3.0/libgcc_s.so.1 /lib64/libgcc_s.so.1
+
+while read LIBRARY
+do
+    buildah copy "$CONTAINER" "$LIBRARY" "$LIBRARY"
+done <<EOF
+/usr/lib64/libpcrecpp.so.0
+/lib64/libm.so.6
+/lib64/libc.so.6
+/lib64/libpcre.so.1
+/lib64/libpthread.so.0
+EOF
+
+buildah config --port 7081 "$CONTAINER"
+buildah config --cmd /process-trie "$CONTAINER"
+
+buildah commit "$CONTAINER" container-registry.dacodastrack.com/goo-trie
+

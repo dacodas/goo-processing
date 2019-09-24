@@ -2,7 +2,7 @@
 all: process-trie
 
 process-trie: src/process-trie.cpp prepare
-	g++ $(CFLAGS) -ggdb src/process-trie.cpp -lpcrecpp -o bin/process-trie
+	g++ $(CFLAGS) -ggdb src/process-trie.cpp -lpcrecpp -o bin/process-trie 
 
 # build-trie: src/build-trie.cpp
 # 	g++ -ggdb src/build-trie.cpp -lpcrecpp -o bin/build-trie
