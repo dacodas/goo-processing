@@ -1,0 +1,22 @@
+#!/bin/bash
+
+DICTIONARY_BASE=/home/dacoda/projects/orihime-django/goo-processing/goo-processing/dictionary-entries 
+
+TEMP_DIR="$(mktemp -d)"
+
+function show_title()
+{
+    RESULT=$(xmllint --html --htmlout \
+                     --output /dev/stdout \
+                     --xpath '//div[contains(@class, "basic_title")]/h1/text()' $DICTIONARY_BASE/$1 \
+                     2> "$TEMP_DIR/$1")
+
+    echo "$1: $RESULT"
+}
+
+export DICTIONARY_BASE TEMP_DIR
+export -f show_title
+
+find $DICTIONARY_BASE -type f -printf "%P\n" \
+    | parallel show_title \
+    | tee $TEMP_DIR/output

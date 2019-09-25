@@ -1,4 +1,5 @@
 #include <iostream>
+#include <vector>
 
 #include <syslog.h>
 
@@ -10,7 +11,7 @@
 
 std::string GrabEntryDefinition(const std::string& html)
 {
-    std::string xpath {"//div[@class=\"contents\"]"};
+    std::string xpath {};
     xmlDoc* document;
     xmlXPathContext* context;
     xmlXPathObject* result; 
@@ -34,43 +35,57 @@ std::string GrabEntryDefinition(const std::string& html)
         return "";
     }
 
-    context = xmlXPathNewContext(document);
-    if ( context == NULL )
-    {
-        syslog(LOG_ERR, "Error creating context\n");
-        return "";
-    }
+    std::string return_string {""};
+    std::vector<std::string> xpaths
+        {
+            "//div[contains(@class, \"basic_title\")]/h1/text()",
+            "//div[@class=\"contents\"]"
+        };
 
-    result = xmlXPathEvalExpression(
-        (xmlChar*) xpath.c_str(),
-        context);
+    // I am unsure if I need a new context for each xmlXPathEvalExpression
+    for ( const auto& xpath : xpaths )
+    {
+        context = xmlXPathNewContext(document);
+        if ( context == NULL )
+        {
+            syslog(LOG_ERR, "Error creating context\n");
+            continue;
+        }
+
+        result = xmlXPathEvalExpression(
+            (xmlChar*) xpath.c_str(),
+            context);
         
-    if ( result == NULL )
-    {
-        syslog(LOG_ERR, "Error evaluating expression\n");
-        return "";
-    } 
+        if ( result == NULL )
+        {
+            syslog(LOG_ERR, "Error evaluating expression\n");
+            continue;
+        } 
 
-    if ( xmlXPathNodeSetIsEmpty(result->nodesetval) )
-    {
-        syslog(LOG_ERR, "No result for that XPath\n");
-        return "";
+        if ( xmlXPathNodeSetIsEmpty(result->nodesetval) )
+        {
+            syslog(LOG_ERR, "No result for that XPath\n");
+            continue;
+        }
+
+        xmlNodeSet* node_set = result->nodesetval;
+        xmlNode** node_array = node_set->nodeTab;
+        size_t size = node_set->nodeNr;
+
+        xmlBuffer* buffer = xmlBufferCreate();
+        // xmlNodeDump(buffer, document, node_array[0], 1, 1);
+        htmlNodeDump(buffer, document, node_array[0]);
+
+        std::string string {reinterpret_cast<char*>(buffer->content)};
+
+        return_string += string;
+
+        xmlBufferFree(buffer);
+        xmlXPathFreeObject(result);
+        xmlXPathFreeContext(context);
     }
 
-    xmlNodeSet* node_set = result->nodesetval;
-    xmlNode** node_array = node_set->nodeTab;
-    size_t size = node_set->nodeNr;
-
-    xmlBuffer* buffer = xmlBufferCreate();
-    // xmlNodeDump(buffer, document, node_array[0], 1, 1);
-    htmlNodeDump(buffer, document, node_array[0]);
-
-    std::string string {reinterpret_cast<char*>(buffer->content)};
-
-    xmlBufferFree(buffer);
-    xmlXPathFreeObject(result);
-    xmlXPathFreeContext(context);
     xmlFreeDoc(document);
 
-    return string;
+    return return_string;
 }
